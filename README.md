@@ -189,6 +189,16 @@ print(f"ETH data: {eth_df.shape}")
 print(f"ETC data: {etc_df.shape}")
 ```
 
+## Jupyter Notebooks & Git
+
+This project uses **nbstripout** to keep notebook version control clean:
+- Notebook outputs are automatically stripped when committing
+- You can work with outputs locally as normal
+- Git diffs are readable and focused on code changes
+- No large binary blobs in git history
+
+**Note**: When you pull/clone, notebooks won't have outputs. Just run the cells to regenerate them.
+
 ## Roadmap
 
 - [x] Set up project structure and development environment
