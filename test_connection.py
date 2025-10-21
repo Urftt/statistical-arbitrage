@@ -28,9 +28,9 @@ def main():
     markets_df = collector.get_available_markets()
     print(f"   ✓ Found {len(markets_df)} markets")
 
-    # Check for ETH-EUR and ETC-EUR
+    # Check for ETH/EUR and ETC/EUR (CCXT uses / format)
     print("\n3. Checking for target pairs...")
-    target_pairs = ["ETH-EUR", "ETC-EUR"]
+    target_pairs = ["ETH/EUR", "ETC/EUR"]
     available = markets_df.filter(
         markets_df["market"].is_in(target_pairs)
     )
@@ -47,20 +47,20 @@ def main():
     print("\n4. Fetching sample data (last 24 hours)...")
     try:
         eth_df = collector.get_candles(
-            market="ETH-EUR",
+            market="ETH/EUR",
             interval="1h",
             limit=24
         )
-        print(f"   ✓ Fetched {len(eth_df)} hourly candles for ETH-EUR")
+        print(f"   ✓ Fetched {len(eth_df)} hourly candles for ETH/EUR")
         print(f"   Latest price: €{eth_df['close'][-1]:.2f}")
         print(f"   Date range: {eth_df['datetime'].min()} to {eth_df['datetime'].max()}")
 
         etc_df = collector.get_candles(
-            market="ETC-EUR",
+            market="ETC/EUR",
             interval="1h",
             limit=24
         )
-        print(f"   ✓ Fetched {len(etc_df)} hourly candles for ETC-EUR")
+        print(f"   ✓ Fetched {len(etc_df)} hourly candles for ETC/EUR")
         print(f"   Latest price: €{etc_df['close'][-1]:.2f}")
         print(f"   Date range: {etc_df['datetime'].min()} to {etc_df['datetime'].max()}")
 

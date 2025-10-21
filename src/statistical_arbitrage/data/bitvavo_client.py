@@ -1,5 +1,5 @@
 """
-Bitvavo API client for fetching cryptocurrency market data.
+Bitvavo API client using CCXT library (more reliable than python-bitvavo-api).
 """
 
 import time
@@ -7,18 +7,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+import ccxt
 import polars as pl
-from python_bitvavo_api.bitvavo import Bitvavo
 
 from config.settings import settings
 
 
 class BitvavoDataCollector:
     """
-    Client for collecting historical and real-time data from Bitvavo exchange.
-
-    Supports fetching OHLCV (Open, High, Low, Close, Volume) candle data
-    for cryptocurrency pairs.
+    Client for collecting historical and real-time data from Bitvavo exchange using CCXT.
     """
 
     def __init__(
@@ -27,7 +24,7 @@ class BitvavoDataCollector:
         api_secret: str | None = None,
     ):
         """
-        Initialize Bitvavo client.
+        Initialize Bitvavo client using CCXT.
 
         Args:
             api_key: Bitvavo API key (optional, not needed for public data)
@@ -37,80 +34,77 @@ class BitvavoDataCollector:
         key = api_key or settings.bitvavo.bitvavo_api_key
         secret = api_secret or settings.bitvavo.bitvavo_api_secret
 
-        # Initialize Bitvavo client
-        self.client = Bitvavo({
-            'APIKEY': key,
-            'APISECRET': secret,
-            'RESTURL': settings.bitvavo.bitvavo_rest_url,
-            'WSURL': settings.bitvavo.bitvavo_ws_url,
+        # Initialize CCXT Bitvavo client
+        self.client = ccxt.bitvavo({
+            'apiKey': key,
+            'secret': secret,
+            'enableRateLimit': True,  # Built-in rate limiting
         })
-
-        self.rate_limit = settings.bitvavo.rate_limit_per_second
 
     def get_available_markets(self) -> pl.DataFrame:
         """
         Get all available trading markets on Bitvavo.
 
         Returns:
-            DataFrame with market information (pair, status, min order size, etc.)
+            DataFrame with market information
         """
-        markets = self.client.markets({})
-        return pl.DataFrame(markets)
+        markets = self.client.load_markets()
+        market_list = []
+        for symbol, info in markets.items():
+            market_list.append({
+                'market': symbol,
+                'base': info.get('base'),
+                'quote': info.get('quote'),
+                'active': info.get('active', True),
+                'status': 'trading' if info.get('active', True) else 'inactive'
+            })
+        return pl.DataFrame(market_list)
 
     def get_candles(
         self,
         market: str,
         interval: str = "1h",
         limit: int = 1000,
-        start: int | None = None,
-        end: int | None = None,
+        since: int | None = None,
     ) -> pl.DataFrame:
         """
         Fetch historical OHLCV candle data for a market.
 
         Args:
-            market: Trading pair (e.g., 'ETH-EUR', 'BTC-EUR')
+            market: Trading pair (e.g., 'ETH/EUR', 'BTC/EUR')
             interval: Candle interval - Options: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d
             limit: Number of candles to fetch (max 1440)
-            start: Start timestamp in milliseconds (optional)
-            end: End timestamp in milliseconds (optional)
+            since: Start timestamp in milliseconds (optional)
 
         Returns:
-            DataFrame with columns: timestamp, open, high, low, close, volume
+            DataFrame with columns: datetime, timestamp, open, high, low, close, volume
         """
-        params = {'limit': limit}
-        if start is not None:
-            params['start'] = start
-        if end is not None:
-            params['end'] = end
-
-        # Fetch candles from Bitvavo
-        candles = self.client.candles(market, interval, params)
-
-        if not candles:
-            return pl.DataFrame()
-
-        # Bitvavo returns list of lists: [timestamp, open, high, low, close, volume]
-        # Convert to Polars DataFrame with named columns
-        df = pl.DataFrame(
-            candles,
-            schema=["timestamp", "open", "high", "low", "close", "volume"],
-            orient="row"
+        # Fetch OHLCV data from Bitvavo via CCXT
+        ohlcv = self.client.fetch_ohlcv(
+            symbol=market,
+            timeframe=interval,
+            since=since,
+            limit=limit
         )
 
-        # Convert string columns to numeric types
-        df = df.select([
-            pl.col("timestamp").cast(pl.Int64),
-            pl.col("open").cast(pl.Utf8).cast(pl.Float64),
-            pl.col("high").cast(pl.Utf8).cast(pl.Float64),
-            pl.col("low").cast(pl.Utf8).cast(pl.Float64),
-            pl.col("close").cast(pl.Utf8).cast(pl.Float64),
-            pl.col("volume").cast(pl.Utf8).cast(pl.Float64),
-        ])
+        if not ohlcv:
+            return pl.DataFrame()
 
-        # Convert timestamp from milliseconds to datetime
+        # CCXT returns: [[timestamp, open, high, low, close, volume], ...]
+        df = pl.DataFrame(
+            {
+                "timestamp": [candle[0] for candle in ohlcv],
+                "open": [candle[1] for candle in ohlcv],
+                "high": [candle[2] for candle in ohlcv],
+                "low": [candle[3] for candle in ohlcv],
+                "close": [candle[4] for candle in ohlcv],
+                "volume": [candle[5] for candle in ohlcv],
+            }
+        )
+
+        # Convert timestamp to datetime
         df = df.with_columns([
-            pl.from_epoch(pl.col("timestamp"), time_unit="ms").alias("datetime")
+            (pl.col("timestamp") * 1_000_000).cast(pl.Datetime("ns")).alias("datetime")
         ])
 
         # Reorder columns
@@ -129,10 +123,10 @@ class BitvavoDataCollector:
         """
         Fetch historical candles for a date range.
 
-        Handles pagination automatically if date range exceeds API limit.
+        Handles pagination automatically.
 
         Args:
-            market: Trading pair (e.g., 'ETH-EUR')
+            market: Trading pair (e.g., 'ETH/EUR')
             interval: Candle interval
             start_date: Start date (if None, calculated from days_back)
             end_date: End date (if None, uses current time)
@@ -154,19 +148,18 @@ class BitvavoDataCollector:
         start_ms = int(start_date.timestamp() * 1000)
         end_ms = int(end_date.timestamp() * 1000)
 
-        # Fetch data in chunks (Bitvavo max is 1440 candles per request)
+        # Fetch data in chunks
         all_candles = []
-        current_start = start_ms
-        max_limit = 1440
+        current_since = start_ms
+        max_limit = 1000  # CCXT recommended limit
 
-        while current_start < end_ms:
+        while current_since < end_ms:
             # Fetch chunk
             df_chunk = self.get_candles(
                 market=market,
                 interval=interval,
                 limit=max_limit,
-                start=current_start,
-                end=end_ms,
+                since=current_since,
             )
 
             if df_chunk.is_empty():
@@ -174,11 +167,15 @@ class BitvavoDataCollector:
 
             all_candles.append(df_chunk)
 
-            # Update start timestamp for next iteration
-            current_start = df_chunk["timestamp"].max() + 1
+            # Update timestamp for next iteration
+            last_timestamp = df_chunk["timestamp"].max()
 
-            # Rate limiting
-            time.sleep(1 / self.rate_limit)
+            # Stop if we've passed the end date
+            if last_timestamp >= end_ms:
+                break
+
+            # Move to next batch (add 1ms to avoid duplicate)
+            current_since = last_timestamp + 1
 
         if not all_candles:
             return pl.DataFrame()
@@ -188,6 +185,11 @@ class BitvavoDataCollector:
 
         # Remove duplicates and sort
         result = result.unique(subset=["timestamp"]).sort("timestamp")
+
+        # Filter to requested date range
+        result = result.filter(
+            (pl.col("timestamp") >= start_ms) & (pl.col("timestamp") <= end_ms)
+        )
 
         return result
 
@@ -210,10 +212,13 @@ class BitvavoDataCollector:
         Returns:
             Path to saved file
         """
+        # Normalize market name for filename (replace / with -)
+        market_safe = market.replace("/", "-")
+
         # Create filename
         start_date = df["datetime"].min().strftime("%Y%m%d")
         end_date = df["datetime"].max().strftime("%Y%m%d")
-        filename = f"{market}_{interval}_{start_date}_{end_date}.{format}"
+        filename = f"{market_safe}_{interval}_{start_date}_{end_date}.{format}"
 
         # Ensure directory exists
         save_dir = settings.data.raw_data_dir
@@ -268,22 +273,22 @@ def fetch_eth_etc_data(
     """
     collector = BitvavoDataCollector()
 
-    print(f"Fetching {days_back} days of {interval} data for ETH-EUR...")
+    print(f"Fetching {days_back} days of {interval} data for ETH/EUR...")
     eth_df = collector.get_candles_range(
-        market="ETH-EUR",
+        market="ETH/EUR",
         interval=interval,
         days_back=days_back,
     )
 
-    print(f"Fetching {days_back} days of {interval} data for ETC-EUR...")
+    print(f"Fetching {days_back} days of {interval} data for ETC/EUR...")
     etc_df = collector.get_candles_range(
-        market="ETC-EUR",
+        market="ETC/EUR",
         interval=interval,
         days_back=days_back,
     )
 
     if save:
-        collector.save_candles(eth_df, "ETH-EUR", interval)
-        collector.save_candles(etc_df, "ETC-EUR", interval)
+        collector.save_candles(eth_df, "ETH/EUR", interval)
+        collector.save_candles(etc_df, "ETC/EUR", interval)
 
     return eth_df, etc_df
