@@ -1,0 +1,26 @@
+{
+    // Python interpreter
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    // Auto-save notebooks
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    // Notebook settings
+    "notebook.output.textLineLimit": 500,
+    "notebook.cellToolbarLocation": {
+        "default": "right",
+        "jupyter-notebook": "left"
+    },
+    // Python linting (optional)
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.ruffEnabled": true,
+    // Format on save
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true
+    },
+    "jupyter.kernels.excludePythonEnvironments": [
+        "${workspaceFolder}/.venv/bin/python"
+    ]
+}
