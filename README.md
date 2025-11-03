@@ -212,6 +212,14 @@ This project uses **nbstripout** to keep notebook version control clean:
 - [ ] Build monitoring dashboard
 - [ ] Implement paper trading system
 
+## Research Findings
+
+Documented findings from our systematic analysis are maintained in **[docs/findings/](docs/findings/)** for easy reference:
+
+- **[01_pair_discovery_cointegration.md](docs/findings/01_pair_discovery_cointegration.md)** - Testing of 40 cryptocurrency pairs, identification of 10 cointegrated pairs, multi-timeframe analysis, and temporal stability findings
+
+Each findings document serves as a searchable reference to avoid re-running notebooks. See the [findings index](docs/findings/README.md) for the full list.
+
 ## References & Learning Resources
 
 ### Statistical Arbitrage
