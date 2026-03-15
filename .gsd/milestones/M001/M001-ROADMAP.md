@@ -50,13 +50,13 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: Foundation + Rolling Cointegration Stability** `risk:high` `depends:[]`
+- [x] **S01: Foundation + Rolling Cointegration Stability** `risk:high` `depends:[]`
   > After this: user can navigate to /research, select a pair from pre-populated dropdown, run the rolling cointegration module, and see a rolling p-value chart with stability takeaway banner
-- [ ] **S02: Core Statistical Modules** `risk:medium` `depends:[S01]`
+- [x] **S02: Core Statistical Modules** `risk:medium` `depends:[S01]`
   > After this: user can also run out-of-sample validation, spread construction comparison, and cointegration test method (EG vs Johansen) modules
-- [ ] **S03: Signal Parameter Modules** `risk:medium` `depends:[S01]`
+- [x] **S03: Signal Parameter Modules** `risk:medium` `depends:[S01]`
   > After this: user can also run optimal timeframe, z-score threshold, and lookback window modules
-- [ ] **S04: Transaction Costs + Polish** `risk:low` `depends:[S02,S03]`
+- [x] **S04: Transaction Costs + Polish** `risk:low` `depends:[S02,S03]`
   > After this: all 8 modules complete, transaction cost sensitivity module works, edge cases handled, existing pages verified, analysis functions tested
 
 ## Boundary Map
