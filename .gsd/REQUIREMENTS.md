@@ -48,7 +48,7 @@
 
 ### R005 — Robustness Under Edge Cases
 - Class: failure-visibility
-- Status: active
+- Status: validated
 - Description: Charts and modules handle insufficient data, inf/nan values, missing cache, and API errors gracefully with clear user-facing messages
 - Why it matters: Current modules show broken/blank graphs when data is missing or insufficient
 - Source: user
@@ -153,12 +153,12 @@
 
 | ID | Class | Status | Primary owner | Supporting | Proof |
 |---|---|---|---|---|---|
-| R001 | core-capability | active | M001/S01 | S02, S03, S04 | unmapped |
-| R002 | primary-user-loop | active | M001/S01 | none | unmapped |
-| R003 | primary-user-loop | active | M001/S01 | none | unmapped |
-| R004 | quality-attribute | active | M001/S01 | S02, S03, S04 | unmapped |
-| R005 | failure-visibility | active | M001/S01 | none | unmapped |
-| R006 | continuity | active | M001/S04 | none | unmapped |
+| R001 | core-capability | validated | M001/S01 | S02, S03, S04 | 8 modules implemented, 48 tests pass, browser verified |
+| R002 | primary-user-loop | validated | M001/S01 | none | Shared UI components, global pair selector, consistent DMC styling |
+| R003 | primary-user-loop | validated | M001/S01 | none | 8 takeaway generators, data-driven colored banners, 48 tests |
+| R004 | quality-attribute | validated | M001/S01 | S02, S03, S04 | analysis/research.py (938 lines, zero Dash imports), 48 pytest tests |
+| R005 | failure-visibility | validated | M001/S01 | none | try/except wrappers, validation guards, NaN filtering |
+| R006 | continuity | validated | M001/S04 | none | Scanner + Deep Dive confirmed working in browser |
 | R007 | differentiator | deferred | none | none | unmapped |
 | R008 | core-capability | deferred | none | none | unmapped |
 | R009 | core-capability | deferred | none | none | unmapped |
@@ -169,7 +169,7 @@
 
 ## Coverage Summary
 
-- Active requirements: 6
+- Active requirements: 0
 - Mapped to slices: 0
-- Validated: 0
-- Unmapped active requirements: 6
+- Validated: 6
+- Unmapped active requirements: 0
