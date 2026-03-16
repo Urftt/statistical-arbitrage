@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "id": "d0503c18",
+    "label": "dash-app",
+    "command": "cd /Users/luckleineschaars/repos/statistical-arbitrage && source .venv/bin/activate && python run_dashboard.py 2>&1",
+    "cwd": "/Users/luckleineschaars/repos/statistical-arbitrage",
+    "startedAt": 1773615261252,
+    "processType": "server",
+    "group": null,
+    "readyPattern": null,
+    "readyPort": 8050,
+    "pid": 84133
+  }
+]

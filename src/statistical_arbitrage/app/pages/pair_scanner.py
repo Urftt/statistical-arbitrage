@@ -1,143 +1,120 @@
 """
 Pair Scanner page — scan Bitvavo pairs for cointegration relationships.
 
-This is the systematic discovery tool: select coins, run cointegration tests,
-rank by statistical significance.
+Rebuilt with DMC components. Reads initial pair from global store.
 """
 
-import traceback
-
-import dash_bootstrap_components as dbc
-import numpy as np
+import dash_mantine_components as dmc
 import plotly.graph_objects as go
 import polars as pl
-from dash import Input, Output, State, callback, dcc, html, no_update
+from dash import Input, Output, State, dcc, html, no_update
+from dash_iconify import DashIconify
 
 from statistical_arbitrage.analysis.cointegration import PairAnalysis
 from statistical_arbitrage.data.cache_manager import get_cache_manager
 
 
+def _icon(name: str, size: int = 16) -> DashIconify:
+    return DashIconify(icon=name, width=size, height=size)
+
+
 def layout():
     """Pair Scanner page layout."""
-    return dbc.Container([
-        dbc.Row([
-            dbc.Col([
-                html.H2("🔍 Pair Scanner", className="mt-3 mb-1"),
-                html.P(
-                    "Systematically scan pairs for cointegration. No assumptions — let the data tell us.",
-                    className="text-muted mb-3",
+    # Pre-fetch pair options
+    try:
+        cache = get_cache_manager()
+        pairs_df = cache.get_available_pairs()
+        symbols = sorted(pairs_df["symbol"].to_list())
+        pair_options = [{"label": s, "value": s} for s in symbols]
+    except Exception:
+        pair_options = []
+
+    return html.Div([
+        # Header
+        dmc.Group([
+            dmc.Title("Pair Scanner", order=2),
+            dmc.Badge("Cointegration Discovery", variant="light", color="blue"),
+        ], gap="md", mb="xs"),
+        dmc.Text(
+            "Scan pairs for cointegration. Select coins, run the scan, find statistically significant relationships.",
+            c="dimmed", size="sm", mb="lg",
+        ),
+
+        # Controls
+        dmc.Paper([
+            dmc.SimpleGrid(
+                cols={"base": 1, "sm": 2, "lg": 4},
+                spacing="md",
+                children=[
+                    dmc.MultiSelect(
+                        id="scanner-coins",
+                        label="Coins to scan",
+                        placeholder="Select coins...",
+                        data=pair_options,
+                        searchable=True,
+                        clearable=True,
+                    ),
+                    dmc.Select(
+                        id="scanner-timeframe",
+                        label="Timeframe",
+                        data=[
+                            {"label": "15 min", "value": "15m"},
+                            {"label": "1 hour", "value": "1h"},
+                            {"label": "4 hours", "value": "4h"},
+                            {"label": "1 day", "value": "1d"},
+                        ],
+                        value="1h",
+                        leftSection=_icon("tabler:clock"),
+                    ),
+                    dmc.NumberInput(
+                        id="scanner-days",
+                        label="History (days)",
+                        value=90,
+                        min=7,
+                        max=365,
+                        leftSection=_icon("tabler:calendar"),
+                    ),
+                    dmc.Stack([
+                        dmc.Text(" ", size="sm"),  # spacer for label alignment
+                        dmc.Button(
+                            "Run Scan",
+                            id="scanner-run",
+                            leftSection=_icon("tabler:player-play"),
+                            fullWidth=True,
+                        ),
+                    ], gap=4),
+                ],
+            ),
+            dmc.Group([
+                dmc.Button(
+                    "Select top 20 by volume",
+                    id="scanner-select-top",
+                    variant="subtle",
+                    size="xs",
+                    leftSection=_icon("tabler:star", 14),
                 ),
-            ])
-        ]),
+            ], mt="sm"),
+        ], shadow="xs", p="lg", radius="md", withBorder=True, mb="lg"),
 
-        # Controls row
-        dbc.Card([
-            dbc.CardBody([
-                dbc.Row([
-                    # Coin selector
-                    dbc.Col([
-                        dbc.Label("Select coins to scan", className="fw-bold"),
-                        dcc.Dropdown(
-                            id="scanner-coins",
-                            multi=True,
-                            placeholder="Loading available pairs...",
-                            className="mb-2",
-                        ),
-                        dbc.Button(
-                            "Load available pairs",
-                            id="scanner-load-pairs",
-                            color="secondary",
-                            size="sm",
-                            className="me-2",
-                        ),
-                        dbc.Button(
-                            "Select top 20 by volume",
-                            id="scanner-select-top",
-                            color="outline-secondary",
-                            size="sm",
-                        ),
-                    ], md=5),
-
-                    # Parameters
-                    dbc.Col([
-                        dbc.Label("Timeframe", className="fw-bold"),
-                        dcc.Dropdown(
-                            id="scanner-timeframe",
-                            options=[
-                                {"label": "15 minutes", "value": "15m"},
-                                {"label": "1 hour", "value": "1h"},
-                                {"label": "4 hours", "value": "4h"},
-                                {"label": "1 day", "value": "1d"},
-                            ],
-                            value="1h",
-                            clearable=False,
-                        ),
-                    ], md=2),
-
-                    dbc.Col([
-                        dbc.Label("History (days)", className="fw-bold"),
-                        dbc.Input(
-                            id="scanner-days",
-                            type="number",
-                            value=90,
-                            min=7,
-                            max=365,
-                        ),
-                    ], md=2),
-
-                    # Run button
-                    dbc.Col([
-                        dbc.Label("\u00a0", className="fw-bold"),  # Spacer
-                        html.Div([
-                            dbc.Button(
-                                [html.I(className="fa-solid fa-play me-2"), "Run Scan"],
-                                id="scanner-run",
-                                color="primary",
-                                className="w-100",
-                            ),
-                        ]),
-                    ], md=3),
-                ]),
-            ]),
-        ], className="mb-3"),
-
-        # Progress / status
+        # Status
         html.Div(id="scanner-status", className="mb-3"),
 
         # Results
         dcc.Loading(
             html.Div(id="scanner-results"),
             type="dot",
-            color="#375a7f",
+            color="#339AF0",
         ),
-    ], fluid=True, className="px-4")
+    ])
 
 
 def register_callbacks(app):
     """Register all callbacks for the Pair Scanner page."""
 
     @app.callback(
-        Output("scanner-coins", "options"),
-        Input("scanner-load-pairs", "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def load_available_pairs(_):
-        """Fetch available EUR pairs from Bitvavo."""
-        try:
-            cache = get_cache_manager()
-            pairs_df = cache.get_available_pairs()
-            options = [
-                {"label": row["symbol"], "value": row["symbol"]}
-                for row in pairs_df.to_dicts()
-            ]
-            return options
-        except Exception as e:
-            return [{"label": f"Error: {e}", "value": ""}]
-
-    @app.callback(
         Output("scanner-coins", "value"),
         Input("scanner-select-top", "n_clicks"),
-        State("scanner-coins", "options"),
+        State("scanner-coins", "data"),
         prevent_initial_call=True,
     )
     def select_top_coins(_, options):
@@ -145,15 +122,19 @@ def register_callbacks(app):
         if not options:
             return no_update
 
-        # Common high-volume EUR pairs on Bitvavo
         top_symbols = [
             "BTC/EUR", "ETH/EUR", "XRP/EUR", "SOL/EUR", "ADA/EUR",
             "DOGE/EUR", "DOT/EUR", "LINK/EUR", "AVAX/EUR", "MATIC/EUR",
             "UNI/EUR", "ATOM/EUR", "LTC/EUR", "ETC/EUR", "ALGO/EUR",
             "XLM/EUR", "FIL/EUR", "NEAR/EUR", "APT/EUR", "ARB/EUR",
         ]
-        available = {o["value"] for o in options if o["value"]}
-        return [s for s in top_symbols if s in available]
+        available_values = set()
+        for o in (options or []):
+            if isinstance(o, dict):
+                available_values.add(o.get("value", ""))
+            elif isinstance(o, str):
+                available_values.add(o)
+        return [s for s in top_symbols if s in available_values]
 
     @app.callback(
         Output("scanner-results", "children"),
@@ -167,29 +148,34 @@ def register_callbacks(app):
     def run_scan(_, coins, timeframe, days):
         """Run cointegration scan on selected pairs."""
         if not coins or len(coins) < 2:
-            return no_update, dbc.Alert(
-                "Select at least 2 coins to scan.", color="warning"
+            return no_update, dmc.Alert(
+                "Select at least 2 coins to scan.",
+                color="yellow",
+                title="Missing selection",
+                icon=_icon("tabler:alert-triangle"),
             )
 
         cache = get_cache_manager()
 
-        # Step 1: Download data for all selected coins
-        status_parts = []
+        # Download data
         data = {}
-        for i, symbol in enumerate(coins):
+        for symbol in coins:
             try:
                 df = cache.get_candles(symbol, timeframe, days_back=days)
                 if not df.is_empty():
                     data[symbol] = df
-            except Exception as e:
-                status_parts.append(f"⚠️ {symbol}: {e}")
+            except Exception:
+                pass
 
         if len(data) < 2:
-            return no_update, dbc.Alert(
-                "Need at least 2 coins with data. Check API connection.", color="danger"
+            return no_update, dmc.Alert(
+                "Need at least 2 coins with data. Check API connection.",
+                color="red",
+                title="Insufficient data",
+                icon=_icon("tabler:alert-circle"),
             )
 
-        # Step 2: Test all pairs for cointegration
+        # Test all pairs
         results = []
         pair_count = 0
         symbols = sorted(data.keys())
@@ -198,7 +184,6 @@ def register_callbacks(app):
             for sym2 in symbols[i + 1:]:
                 pair_count += 1
                 try:
-                    # Align timestamps
                     df1 = data[sym1].select(["timestamp", "close"]).rename({"close": "close1"})
                     df2 = data[sym2].select(["timestamp", "close"]).rename({"close": "close2"})
                     merged = df1.join(df2, on="timestamp", how="inner")
@@ -206,7 +191,6 @@ def register_callbacks(app):
                     if len(merged) < 30:
                         continue
 
-                    # Run cointegration analysis
                     analysis = PairAnalysis(merged["close1"], merged["close2"])
                     coint_result = analysis.test_cointegration()
                     half_life = analysis.calculate_half_life()
@@ -227,41 +211,30 @@ def register_callbacks(app):
                         "Spread Kurt": round(spread_props["kurtosis"], 2),
                         "Datapoints": len(merged),
                     })
-                except Exception as e:
+                except Exception:
                     results.append({
                         "Pair": f"{sym1} / {sym2}",
-                        "Asset 1": sym1,
-                        "Asset 2": sym2,
                         "Cointegrated": "⚠️",
-                        "p-value": None,
-                        "Test Stat": None,
-                        "Hedge Ratio": None,
-                        "Half-life": None,
-                        "Correlation": None,
-                        "Spread Skew": None,
-                        "Spread Kurt": None,
+                        "p-value": None, "Test Stat": None, "Hedge Ratio": None,
+                        "Half-life": None, "Correlation": None,
+                        "Spread Skew": None, "Spread Kurt": None,
                         "Datapoints": 0,
                     })
 
         if not results:
-            return no_update, dbc.Alert("No valid pairs found.", color="warning")
+            return no_update, dmc.Alert("No valid pairs found.", color="yellow")
 
-        # Sort by p-value (most cointegrated first)
-        results_df = pl.DataFrame(results)
-        
-        # Build results display
         cointegrated = [r for r in results if r["Cointegrated"] == "✅"]
-        not_cointegrated = [r for r in results if r["Cointegrated"] == "❌"]
 
-        status = dbc.Alert([
-            html.Strong(f"Scanned {pair_count} pairs. "),
-            f"Found {len(cointegrated)} cointegrated, {len(not_cointegrated)} not cointegrated.",
-        ], color="success" if cointegrated else "info")
+        status = dmc.Alert(
+            f"Scanned {pair_count} pairs. Found {len(cointegrated)} cointegrated, "
+            f"{len(results) - len(cointegrated)} not cointegrated.",
+            color="green" if cointegrated else "blue",
+            title="Scan complete",
+            icon=_icon("tabler:check"),
+        )
 
-        # Build results table
         table = _build_results_table(results)
-
-        # Build p-value distribution chart
         p_values = [r["p-value"] for r in results if r["p-value"] is not None]
         p_chart = _build_pvalue_chart(p_values)
 
@@ -272,81 +245,72 @@ def register_callbacks(app):
 
 
 def _build_results_table(results: list[dict]):
-    """Build a formatted results table."""
-    # Sort: cointegrated first, then by p-value
+    """Build results table with DMC."""
     sorted_results = sorted(
         results,
         key=lambda r: (0 if r["Cointegrated"] == "✅" else 1, r["p-value"] or 999),
     )
 
-    header = html.Thead(html.Tr([
-        html.Th("Pair"),
-        html.Th("Coint?"),
-        html.Th("p-value"),
-        html.Th("Test Stat"),
-        html.Th("Hedge Ratio"),
-        html.Th("Half-life"),
-        html.Th("Correlation"),
-        html.Th("Skewness"),
-        html.Th("Kurtosis"),
-        html.Th("Points"),
+    head = dmc.TableThead(dmc.TableTr([
+        dmc.TableTh("Pair"),
+        dmc.TableTh("Coint?"),
+        dmc.TableTh("p-value"),
+        dmc.TableTh("Test Stat"),
+        dmc.TableTh("Hedge Ratio"),
+        dmc.TableTh("Half-life"),
+        dmc.TableTh("Correlation"),
+        dmc.TableTh("Skew"),
+        dmc.TableTh("Kurt"),
+        dmc.TableTh("Points"),
     ]))
 
     rows = []
     for r in sorted_results:
-        # Color-code the row
-        style = {}
-        if r["Cointegrated"] == "✅":
-            style = {"backgroundColor": "rgba(0, 200, 83, 0.1)"}
-
-        rows.append(html.Tr([
-            html.Td(r["Pair"], className="fw-bold"),
-            html.Td(r["Cointegrated"]),
-            html.Td(
-                f"{r['p-value']:.4f}" if r["p-value"] is not None else "—",
-                className="fw-bold" if r["p-value"] is not None and r["p-value"] < 0.05 else "",
+        style = {"backgroundColor": "rgba(81, 207, 102, 0.06)"} if r["Cointegrated"] == "✅" else {}
+        rows.append(dmc.TableTr([
+            dmc.TableTd(dmc.Text(r["Pair"], fw=600, size="sm")),
+            dmc.TableTd(r["Cointegrated"]),
+            dmc.TableTd(
+                dmc.Text(
+                    f"{r['p-value']:.4f}" if r["p-value"] is not None else "—",
+                    fw=700 if r["p-value"] is not None and r["p-value"] < 0.05 else 400,
+                    size="sm",
+                )
             ),
-            html.Td(f"{r['Test Stat']:.2f}" if r["Test Stat"] is not None else "—"),
-            html.Td(f"{r['Hedge Ratio']:.4f}" if r["Hedge Ratio"] is not None else "—"),
-            html.Td(str(r["Half-life"]) if r["Half-life"] is not None else "—"),
-            html.Td(f"{r['Correlation']:.3f}" if r["Correlation"] is not None else "—"),
-            html.Td(f"{r['Spread Skew']:.2f}" if r["Spread Skew"] is not None else "—"),
-            html.Td(f"{r['Spread Kurt']:.2f}" if r["Spread Kurt"] is not None else "—"),
-            html.Td(str(r["Datapoints"])),
+            dmc.TableTd(f"{r['Test Stat']:.2f}" if r["Test Stat"] is not None else "—"),
+            dmc.TableTd(f"{r['Hedge Ratio']:.4f}" if r["Hedge Ratio"] is not None else "—"),
+            dmc.TableTd(str(r["Half-life"]) if r["Half-life"] is not None else "—"),
+            dmc.TableTd(f"{r['Correlation']:.3f}" if r["Correlation"] is not None else "—"),
+            dmc.TableTd(f"{r['Spread Skew']:.2f}" if r["Spread Skew"] is not None else "—"),
+            dmc.TableTd(f"{r['Spread Kurt']:.2f}" if r["Spread Kurt"] is not None else "—"),
+            dmc.TableTd(str(r["Datapoints"])),
         ], style=style))
 
-    return dbc.Table(
-        [header, html.Tbody(rows)],
-        bordered=True,
-        hover=True,
-        responsive=True,
-        size="sm",
-        className="mt-3",
+    return dmc.Table(
+        [head, dmc.TableTbody(rows)],
+        striped=True,
+        highlightOnHover=True,
+        withTableBorder=True,
+        withColumnBorders=True,
+        mt="md",
     )
 
 
 def _build_pvalue_chart(p_values: list[float]):
-    """Build a histogram of p-values."""
+    """Build p-value distribution histogram."""
     fig = go.Figure()
-
     fig.add_trace(go.Histogram(
         x=p_values,
         nbinsx=20,
-        marker_color="rgba(55, 90, 127, 0.7)",
-        marker_line=dict(color="rgba(55, 90, 127, 1)", width=1),
+        marker_color="rgba(51, 154, 240, 0.7)",
+        marker_line=dict(color="rgba(51, 154, 240, 1)", width=1),
     ))
-
-    # Add significance threshold line
-    fig.add_vline(x=0.05, line_dash="dash", line_color="red",
+    fig.add_vline(x=0.05, line_dash="dash", line_color="#FF6B6B",
                   annotation_text="p = 0.05", annotation_position="top right")
-
     fig.update_layout(
         title="Distribution of Cointegration p-values",
         xaxis_title="p-value",
         yaxis_title="Count",
-        template="plotly_dark",
         height=300,
-        margin=dict(t=40, b=40, l=40, r=20),
     )
-
     return fig
