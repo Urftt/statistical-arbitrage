@@ -34,4 +34,4 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 ## Milestone Sequence
 
 - [x] M001: Research Hub Rebuild — 8 empirical research modules with proper UX and takeaway banners ✅
-- [ ] M002: UI Redesign — Dash Mantine Components migration (partially complete — layout/research hub done, scanner/deep dive pending)
+- [x] M002: UI Redesign — Dash Mantine Components ✅
